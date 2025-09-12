@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "A digital bridge connecting families, healing trauma, and restoring identity in Rwanda",
   "private": true,
-  "homepage":"/",
+  "homepage": "https://your-vercel-url.vercel.app",
   "dependencies": {
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.3.0",
