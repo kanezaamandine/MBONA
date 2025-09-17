@@ -1,10 +1,24 @@
-import React, { useState } from 'react';
-import { Search, Heart, Users, FileText, Shield, Clock, MapPin, Camera, Mic, Upload } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Search, Heart, Users, FileText, Shield, Clock, MapPin, Camera, Mic, Upload, Square, Play } from 'lucide-react';
 
 const SurvivorReconnection = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showPostForm, setShowPostForm] = useState(false);
+  
+  
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioRef = useRef(null);
+  const intervalRef = useRef(null);
+  
+  // File upload state
+  const [uploadedPhotos, setUploadedPhotos] = useState([]);
+  const [uploadedDocuments, setUploadedDocuments] = useState([]);
+  const photoInputRef = useRef(null);
+  const documentInputRef = useRef(null);
 
 
   const memories = [
@@ -96,6 +110,150 @@ const SurvivorReconnection = () => {
     
     return matchesSearch && matchesCategory;
   });
+
+  
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      const chunks = [];
+      mediaRecorder.ondataavailable = (event) => {
+        chunks.push(event.data);
+      };
+      
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      
+      intervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      alert('Unable to access microphone. Please check your permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      clearInterval(intervalRef.current);
+    }
+  };
+
+  const playRecording = () => {
+    if (audioUrl && audioRef.current) {
+      audioRef.current.play();
+    }
+  };
+
+  const deleteRecording = () => {
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
+      setRecordingTime(0);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // File upload functions
+  const handlePhotoUpload = (event) => {
+    const files = Array.from(event.target.files);
+    const validFiles = files.filter(file => {
+      const isValidType = file.type.startsWith('image/');
+      const isValidSize = file.size <= 10 * 1024 * 1024; // 10MB limit
+      return isValidType && isValidSize;
+    });
+
+    if (validFiles.length !== files.length) {
+      alert('Some files were rejected. Please upload only image files under 10MB.');
+    }
+
+    validFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const newPhoto = {
+          id: Date.now() + Math.random(),
+          file: file,
+          url: e.target.result,
+          name: file.name,
+          size: file.size
+        };
+        setUploadedPhotos(prev => [...prev, newPhoto]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Reset input
+    event.target.value = '';
+  };
+
+  const handleDocumentUpload = (event) => {
+    const files = Array.from(event.target.files);
+    const validFiles = files.filter(file => {
+      const validTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ];
+      const isValidType = validTypes.includes(file.type);
+      const isValidSize = file.size <= 25 * 1024 * 1024; // 25MB limit
+      return isValidType && isValidSize;
+    });
+
+    if (validFiles.length !== files.length) {
+      alert('Some files were rejected. Please upload only PDF, Word, Excel, or text files under 25MB.');
+    }
+
+    validFiles.forEach(file => {
+      const newDocument = {
+        id: Date.now() + Math.random(),
+        file: file,
+        name: file.name,
+        size: file.size,
+        type: file.type
+      };
+      setUploadedDocuments(prev => [...prev, newDocument]);
+    });
+
+    // Reset input
+    event.target.value = '';
+  };
+
+  const removePhoto = (photoId) => {
+    setUploadedPhotos(prev => prev.filter(photo => photo.id !== photoId));
+  };
+
+  const removeDocument = (documentId) => {
+    setUploadedDocuments(prev => prev.filter(doc => doc.id !== documentId));
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
   const categories = [
     { value: 'all', label: 'All Posts', icon: Users },
@@ -255,19 +413,181 @@ const SurvivorReconnection = () => {
                   />
                 </div>
 
-                <div className="flex items-center space-x-4">
-                  <button type="button" className="btn btn-secondary">
-                    <Camera className="w-4 h-4 mr-2" />
-                    Add Photo
-                  </button>
-                  <button type="button" className="btn btn-secondary">
-                    <Mic className="w-4 h-4 mr-2" />
-                    Voice Note
-                  </button>
-                  <button type="button" className="btn btn-secondary">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload Document
-                  </button>
+                <div className="space-y-6">
+                  {/* Photo Upload Section */}
+                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-semibold text-gray-900">Photos</h3>
+                      <span className="text-sm text-gray-500">{uploadedPhotos.length} uploaded</span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3 mb-4">
+                      <button 
+                        type="button" 
+                        onClick={() => photoInputRef.current?.click()}
+                        className="btn bg-blue-600 text-white hover:bg-blue-700"
+                      >
+                        <Camera className="w-4 h-4 mr-2" />
+                        Add Photos
+                      </button>
+                      <input
+                        ref={photoInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handlePhotoUpload}
+                        className="hidden"
+                      />
+                      <p className="text-sm text-gray-600">
+                        Upload photos of family members, documents, or places. Max 10MB per file.
+                      </p>
+                    </div>
+                    
+                    {uploadedPhotos.length > 0 && (
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {uploadedPhotos.map(photo => (
+                          <div key={photo.id} className="relative group">
+                            <img 
+                              src={photo.url} 
+                              alt={photo.name}
+                              className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(photo.id)}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              ×
+                            </button>
+                            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 rounded-b-lg">
+                              <div className="truncate">{photo.name}</div>
+                              <div>{formatFileSize(photo.size)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Document Upload Section */}
+                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-semibold text-gray-900">Documents</h3>
+                      <span className="text-sm text-gray-500">{uploadedDocuments.length} uploaded</span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3 mb-4">
+                      <button 
+                        type="button" 
+                        onClick={() => documentInputRef.current?.click()}
+                        className="btn bg-green-600 text-white hover:bg-green-700"
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload Documents
+                      </button>
+                      <input
+                        ref={documentInputRef}
+                        type="file"
+                        accept=".pdf,.doc,.docx,.txt,.xls,.xlsx"
+                        multiple
+                        onChange={handleDocumentUpload}
+                        className="hidden"
+                      />
+                      <p className="text-sm text-gray-600">
+                        Upload birth certificates, IDs, letters, or other documents. Max 25MB per file.
+                      </p>
+                    </div>
+                    
+                    {uploadedDocuments.length > 0 && (
+                      <div className="space-y-2">
+                        {uploadedDocuments.map(doc => (
+                          <div key={doc.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
+                            <div className="flex items-center space-x-3">
+                              <FileText className="w-5 h-5 text-gray-500" />
+                              <div>
+                                <div className="font-medium text-gray-900">{doc.name}</div>
+                                <div className="text-sm text-gray-500">{formatFileSize(doc.size)}</div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeDocument(doc.id)}
+                              className="text-red-500 hover:text-red-700 text-sm"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Voice Recording Section */}
+                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-semibold text-gray-900">Voice Note</h3>
+                      <div className="flex items-center space-x-2">
+                        {isRecording && (
+                          <div className="flex items-center space-x-2 text-red-600">
+                            <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
+                            <span className="text-sm font-medium">{formatTime(recordingTime)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3">
+                      {!isRecording ? (
+                        <button 
+                          type="button" 
+                          onClick={startRecording}
+                          className="btn bg-red-600 text-white hover:bg-red-700"
+                        >
+                          <Mic className="w-4 h-4 mr-2" />
+                          Start Recording
+                        </button>
+                      ) : (
+                        <button 
+                          type="button" 
+                          onClick={stopRecording}
+                          className="btn bg-gray-600 text-white hover:bg-gray-700"
+                        >
+                          <Square className="w-4 h-4 mr-2" />
+                          Stop Recording
+                        </button>
+                      )}
+                      
+                      {audioUrl && (
+                        <>
+                          <button 
+                            type="button" 
+                            onClick={playRecording}
+                            className="btn btn-secondary"
+                          >
+                            <Play className="w-4 h-4 mr-2" />
+                            Play
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={deleteRecording}
+                            className="btn bg-red-100 text-red-600 hover:bg-red-200"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    
+                    {audioUrl && (
+                      <div className="mt-3">
+                        <audio ref={audioRef} src={audioUrl} controls className="w-full" />
+                      </div>
+                    )}
+                    
+                    <p className="text-sm text-gray-600 mt-2">
+                      Record a voice note to share your memories or story. This can be especially helpful for sharing emotional stories or when typing is difficult.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="privacy-notice">
